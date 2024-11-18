@@ -1,39 +1,73 @@
-import streamlit as st
+import ipywidgets as widgets
+from IPython.display import display, clear_output
 from Bio import SeqIO
 from Bio.Seq import Seq
 import pandas as pd
-from io import StringIO
 
-# Streamlit App Title
-st.title("CRISPR Spacer Design Tool")
+# Widget for file path input
+file_path_input = widgets.Text(
+    value='',
+    description='GenBank File Path:',
+    placeholder='/Users/christosbatianis/Downloads/GCF_000007565.2_ASM756v2_genomic.gbff',
+)
 
-# File upload for GenBank file
-genbank_file = st.file_uploader("Upload a GenBank file (.gb, .gbff)", type=["gb", "gbff"])
+# Input widgets for parameters
+gene_input = widgets.Text(
+    value='edd',
+    description='Target Genes:',
+    placeholder='Comma-separated gene names (e.g., edd, pgi)',
+)
 
-# User inputs
-target_genes = st.text_input("Enter target gene names (comma-separated)", value="edd")
-pam_sequence = st.text_input("Enter PAM sequence", value="CC")
-spacer_length = st.slider("Select spacer length", min_value=16, max_value=50, value=32)
-left_flank = st.text_input("Enter left flank sequence", value="aggtcTcaaaac")
-right_flank = st.text_input("Enter right flank sequence", value="gtttttGAGACCa")
+pam_input = widgets.Text(
+    value='CC',
+    description='PAM Sequence:',
+)
 
-# Convert target genes input to a list
-target_genes_list = [gene.strip() for gene in target_genes.split(",")]
+spacer_length_input = widgets.IntSlider(
+    value=32,
+    min=16,
+    max=50,
+    step=1,
+    description='Spacer Length:',
+)
 
-# Function to extract sequences for specified genes from the GenBank file
-def get_gene_sequences(gb_file_content, gene_names):
+left_flank_input = widgets.Text(
+    value='aggtcTcaaaac',
+    description='Left Flank:',
+)
+
+right_flank_input = widgets.Text(
+    value='gtttttGAGACCa',
+    description='Right Flank:',
+)
+
+# Button to run the analysis
+run_button = widgets.Button(
+    description='Generate Spacers',
+    button_style='success',
+)
+
+# Output widget to display results
+output = widgets.Output()
+
+# Function to extract gene sequences from the GenBank file
+def get_gene_sequences(file_path, gene_names):
     gene_sequences = {}
-    gb_file = StringIO(gb_file_content)
-    for record in SeqIO.parse(gb_file, "genbank"):
-        for feature in record.features:
-            if feature.type == "gene" and "gene" in feature.qualifiers:
-                gene_name = feature.qualifiers["gene"][0]
-                if gene_name in gene_names:
-                    gene_seq = feature.location.extract(record).seq
-                    gene_sequences[gene_name] = gene_seq
-    return gene_sequences
+    try:
+        with open(file_path, "r") as gb_file:
+            for record in SeqIO.parse(gb_file, "genbank"):
+                for feature in record.features:
+                    if feature.type == "gene" and "gene" in feature.qualifiers:
+                        gene_name = feature.qualifiers["gene"][0]
+                        if gene_name in gene_names:
+                            gene_seq = feature.location.extract(record).seq
+                            gene_sequences[gene_name] = gene_seq
+        return gene_sequences
+    except Exception as e:
+        print(f"Error reading GenBank file: {str(e)}")
+        return {}
 
-# Function to design spacers with PAM
+# Function to generate spacers with PAM
 def generate_spacers_with_pam(gene_sequences, pam_seq, spacer_length):
     spacers = {}
     for gene, sequence in gene_sequences.items():
@@ -47,43 +81,62 @@ def generate_spacers_with_pam(gene_sequences, pam_seq, spacer_length):
         spacers[gene] = gene_spacers
     return spacers
 
-# Main processing block
-if genbank_file is not None:
-    # Read file content
-    gb_content = genbank_file.getvalue().decode("utf-8")
+# Function to handle button click and process data
+def on_button_click(b):
+    with output:
+        clear_output()
 
-    # Extract gene sequences
-    gene_sequences = get_gene_sequences(gb_content, target_genes_list)
+        # Get the file path
+        file_path = file_path_input.value.strip()
+        if not file_path:
+            print("Please enter the GenBank file path.")
+            return
 
-    # Check if any gene sequences were found
-    if not gene_sequences:
-        st.error("No target genes found in the GenBank file. Please check the gene names.")
-    else:
+        # Get input values
+        target_genes = [gene.strip() for gene in gene_input.value.split(',')]
+        pam_sequence = pam_input.value
+        spacer_length = spacer_length_input.value
+        left_flank = left_flank_input.value
+        right_flank = right_flank_input.value
+
+        # Extract gene sequences
+        gene_sequences = get_gene_sequences(file_path, target_genes)
+
+        # Check if any gene sequences were found
+        if not gene_sequences:
+            print("No target genes found in the GenBank file. Please check the gene names.")
+            return
+        
         # Generate spacers
         spacers = generate_spacers_with_pam(gene_sequences, pam_sequence, spacer_length)
 
-        # Prepare data for display and download
+        # Prepare data for display and Excel export
         spacer_data = []
         for gene, spacer_list in spacers.items():
             for i, spacer in enumerate(spacer_list):
+                # Create sense oligo
                 full_spacer = f"{left_flank}{spacer}{right_flank}"
                 spacer_name_sense = f"{gene}_sp.{i + 1}_Sense"
+
+                # Create antisense oligo (reverse complement)
                 reverse_complement = str(Seq(full_spacer).reverse_complement())
                 spacer_name_antisense = f"{gene}_sp.{i + 1}_AntiSense"
+
+                # Append to spacer data
                 spacer_data.append([spacer_name_sense, full_spacer])
                 spacer_data.append([spacer_name_antisense, reverse_complement])
 
-        # Display results in a table
+        # Display results in a DataFrame
         df = pd.DataFrame(spacer_data, columns=["Name", "Sequence"])
-        st.write(df)
+        display(df)
 
-        # Download button for the Excel file
+        # Save results to Excel
         output_filename = "spacers_output.xlsx"
         df.to_excel(output_filename, index=False)
-        with open(output_filename, "rb") as file:
-            st.download_button(
-                label="Download Results as Excel",
-                data=file,
-                file_name=output_filename,
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            )
+        print(f"Results saved to {output_filename}")
+
+# Assign the button click event
+run_button.on_click(on_button_click)
+
+# Display the widgets
+display(file_path_input, gene_input, pam_input, spacer_length_input, left_flank_input, right_flank_input, run_button, output)
