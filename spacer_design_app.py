@@ -103,33 +103,24 @@ if st.button("Generate Spacers"):
                 spacer_data = []
                 for gene, spacer_list in spacers.items():
                     for i, spacer in enumerate(spacer_list):
-                        # Create sense oligo
                         full_spacer = f"{left_flank}{spacer}{right_flank}"
-                        spacer_name_sense = f"{gene}_sp.{i + 1}_Sense"
-
-                        # Create antisense oligo (reverse complement)
-                        reverse_complement = str(Seq(full_spacer).reverse_complement())
-                        spacer_name_antisense = f"{gene}_sp.{i + 1}_AntiSense"
-
-                        # Append to spacer data
-                        spacer_data.append([spacer_name_sense, full_spacer])
-                        spacer_data.append([spacer_name_antisense, reverse_complement])
+                        spacer_name = f"{gene}_sp.{i + 1}"
+                        spacer_data.append([spacer_name, full_spacer])
 
                 # Display results
                 df = pd.DataFrame(spacer_data, columns=["Name", "Sequence"])
                 st.write("Generated Spacers:")
                 st.dataframe(df)
 
-                # Provide download option
+                # Provide CSV download option
                 output = BytesIO()
-                with pd.ExcelWriter(output, engine="openpyxl") as writer:
-                    df.to_excel(writer, index=False)
+                df.to_csv(output, index=False)
                 output.seek(0)
                 st.download_button(
-                    label="Download Results as Excel",
+                    label="Download Results as CSV",
                     data=output,
-                    file_name="spacers_output.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    file_name="spacers_output.csv",
+                    mime="text/csv"
                 )
 
         except Exception as e:
