@@ -46,13 +46,20 @@ def get_orf_upstream_sequences(gb_content, gene_names, upstream_window):
                 gene_name = feature.qualifiers["gene"][0]
                 if gene_name in gene_names:
                     orf_start = feature.location.start
+                    strand = feature.location.strand
                     gene_seq = feature.location.extract(record).seq
                     gene_sequences[gene_name] = gene_seq
                     
-                    # Extract upstream region based on ORF start
-                    upstream_start = max(0, orf_start - upstream_window[1])
-                    upstream_end = max(0, orf_start - upstream_window[0])
-                    upstream_seq = record.seq[upstream_start:upstream_end]
+                    # Extract upstream region considering strand orientation
+                    if strand == 1:  # Forward strand
+                        upstream_start = max(0, orf_start - upstream_window[1])
+                        upstream_end = max(0, orf_start - upstream_window[0])
+                        upstream_seq = record.seq[upstream_start:upstream_end]
+                    else:  # Reverse strand
+                        upstream_start = min(len(record.seq), feature.location.end + upstream_window[0])
+                        upstream_end = min(len(record.seq), feature.location.end + upstream_window[1])
+                        upstream_seq = record.seq[upstream_start:upstream_end].reverse_complement()
+                    
                     upstream_sequences[gene_name] = upstream_seq
     return gene_sequences, upstream_sequences
 
