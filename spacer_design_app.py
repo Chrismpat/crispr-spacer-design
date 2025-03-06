@@ -36,9 +36,10 @@ position_range = st.slider("Search Position in Gene (% of Gene Length):", min_va
 left_flank = st.text_input("Left Flank Sequence:", value="aggtcTcaaaac")
 right_flank = st.text_input("Right Flank Sequence:", value="gtttttGAGACCa")
 
-# Function to extract gene sequences from GenBank
+# Function to extract gene sequences and upstream regions from GenBank
 def get_gene_sequences(gb_content, gene_names):
     gene_sequences = {}
+    upstream_sequences = {}
     gb_file = StringIO(gb_content)
     for record in SeqIO.parse(gb_file, "genbank"):
         for feature in record.features:
@@ -47,25 +48,26 @@ def get_gene_sequences(gb_content, gene_names):
                 if gene_name in gene_names:
                     gene_seq = feature.location.extract(record).seq
                     gene_sequences[gene_name] = gene_seq
-    return gene_sequences
+                    
+                    # Extract upstream region
+                    start = feature.location.start
+                    upstream_start = max(0, start - upstream_window[1])
+                    upstream_end = max(0, start - upstream_window[0])
+                    upstream_seq = record.seq[upstream_start:upstream_end]
+                    upstream_sequences[gene_name] = upstream_seq
+    return gene_sequences, upstream_sequences
 
 # Function to generate spacers with PAM
-def generate_spacers_with_pam(gene_sequences, pam_seq, spacer_length, direction, num_spacers, position_range, design_upstream, upstream_window):
+def generate_spacers_with_pam(gene_sequences, upstream_sequences, pam_seq, spacer_length, direction, num_spacers, position_range, design_upstream):
     spacers = {}
-    for gene, sequence in gene_sequences.items():
+    for gene in gene_sequences.keys():
         gene_spacers = []
+        sequence = upstream_sequences[gene] if design_upstream else gene_sequences[gene]
         gene_length = len(sequence)
         start_pos = int((position_range[0] / 100) * gene_length)
         end_pos = int((position_range[1] / 100) * gene_length)
-
-        if design_upstream:
-            upstream_start = max(0, -upstream_window[1])
-            upstream_end = max(0, -upstream_window[0])
-        else:
-            upstream_start = start_pos
-            upstream_end = end_pos
-
-        for i in range(upstream_start, min(upstream_end, gene_length - spacer_length - len(pam_seq))):
+        
+        for i in range(start_pos, min(end_pos, gene_length - spacer_length - len(pam_seq))):
             if sequence[i:i + len(pam_seq)] == pam_seq:
                 if direction == "PAM-Upstream (PAM-Spacer)":
                     spacer = sequence[i + len(pam_seq):i + len(pam_seq) + spacer_length]
@@ -89,15 +91,15 @@ if st.button("Generate Spacers"):
             gb_content = genbank_file.getvalue().decode("utf-8")
             target_genes_list = [gene.strip() for gene in target_genes.split(",")]
 
-            # Extract gene sequences
-            gene_sequences = get_gene_sequences(gb_content, target_genes_list)
+            # Extract gene and upstream sequences
+            gene_sequences, upstream_sequences = get_gene_sequences(gb_content, target_genes_list)
 
             # Check if any gene sequences were found
             if not gene_sequences:
                 st.error("No target genes found in the GenBank file. Please check the gene names.")
             else:
                 # Generate spacers
-                spacers = generate_spacers_with_pam(gene_sequences, pam_sequence, spacer_length, direction, num_spacers, position_range, design_upstream, upstream_window)
+                spacers = generate_spacers_with_pam(gene_sequences, upstream_sequences, pam_sequence, spacer_length, direction, num_spacers, position_range, design_upstream)
 
                 # Prepare data for display and download
                 spacer_data = []
