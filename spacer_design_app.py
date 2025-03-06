@@ -32,6 +32,7 @@ direction = st.selectbox("Spacer Direction:", ["PAM-Upstream (PAM-Spacer)", "PAM
 design_upstream = st.checkbox("Design Spacers Upstream of ORF")
 upstream_window = st.slider("Upstream Window for PAM (bases from ORF start):", min_value=10, max_value=500, value=(10, 100))
 num_spacers = st.slider("Number of Spacers to Predict per Gene:", min_value=1, max_value=10, value=3)
+position_range = st.slider("Search Position in Gene (% of Gene Length):", min_value=0, max_value=100, value=(10, 20))
 left_flank = st.text_input("Left Flank Sequence:", value="aggtcTcaaaac")
 right_flank = st.text_input("Right Flank Sequence:", value="gtttttGAGACCa")
 
@@ -64,14 +65,16 @@ def get_orf_upstream_sequences(gb_content, gene_names, upstream_window):
     return gene_sequences, upstream_sequences
 
 # Function to generate spacers with PAM
-def generate_spacers_with_pam(gene_sequences, upstream_sequences, pam_seq, spacer_length, direction, num_spacers, design_upstream):
+def generate_spacers_with_pam(gene_sequences, upstream_sequences, pam_seq, spacer_length, direction, num_spacers, position_range, design_upstream):
     spacers = {}
     for gene in gene_sequences.keys():
         gene_spacers = []
         sequence = upstream_sequences[gene] if design_upstream else gene_sequences[gene]
         gene_length = len(sequence)
+        start_pos = int((position_range[0] / 100) * gene_length)
+        end_pos = int((position_range[1] / 100) * gene_length)
         
-        for i in range(gene_length - spacer_length - len(pam_seq)):
+        for i in range(start_pos, min(end_pos, gene_length - spacer_length - len(pam_seq))):
             if sequence[i:i + len(pam_seq)] == pam_seq:
                 if direction == "PAM-Upstream (PAM-Spacer)":
                     spacer = sequence[i + len(pam_seq):i + len(pam_seq) + spacer_length]
@@ -103,7 +106,7 @@ if st.button("Generate Spacers"):
                 st.error("No target genes found in the GenBank file. Please check the gene names.")
             else:
                 # Generate spacers
-                spacers = generate_spacers_with_pam(gene_sequences, upstream_sequences, pam_sequence, spacer_length, direction, num_spacers, design_upstream)
+                spacers = generate_spacers_with_pam(gene_sequences, upstream_sequences, pam_sequence, spacer_length, direction, num_spacers, position_range, design_upstream)
 
                 # Prepare data for display and download
                 spacer_data = []
