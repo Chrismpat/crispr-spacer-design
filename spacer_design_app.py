@@ -7,6 +7,20 @@ from io import StringIO, BytesIO
 # Streamlit App Title
 st.title("CRISPR Spacer Design Tool")
 
+# Instructions for GBFF File
+st.markdown(
+    """### How to Download Genome Files from NCBI:
+    1. Go to [NCBI Genome](https://www.ncbi.nlm.nih.gov/genome/)
+    2. Search for your organism of interest.
+    3. Click on the organism name to access its genome page.
+    4. Under "Downloads", look for **"GenBank (Full)"**.
+    5. Download the **.gbff** file.
+    6. Upload the file using the button below.
+    
+    **Note:** The GBFF file contains both the genome sequence and gene annotations.
+    """
+)
+
 # Upload the GenBank file
 genbank_file = st.file_uploader("Upload a GenBank file (.gb or .gbff)", type=["gb", "gbff"])
 
