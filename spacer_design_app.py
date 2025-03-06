@@ -29,45 +29,42 @@ target_genes = st.text_input("Target Genes (comma-separated):", value="edd")
 pam_sequence = st.text_input("PAM Sequence:", value="CC")
 spacer_length = st.slider("Spacer Length:", min_value=16, max_value=50, value=32)
 direction = st.selectbox("Spacer Direction:", ["PAM-Upstream (PAM-Spacer)", "PAM-Downstream (Spacer-PAM)"])
-design_upstream = st.checkbox("Design Spacers Upstream of Gene")
+design_upstream = st.checkbox("Design Spacers Upstream of ORF")
 upstream_window = st.slider("Upstream Window for PAM (bases from ORF start):", min_value=10, max_value=500, value=(10, 100))
 num_spacers = st.slider("Number of Spacers to Predict per Gene:", min_value=1, max_value=10, value=3)
-position_range = st.slider("Search Position in Gene (% of Gene Length):", min_value=0, max_value=100, value=(10, 20))
 left_flank = st.text_input("Left Flank Sequence:", value="aggtcTcaaaac")
 right_flank = st.text_input("Right Flank Sequence:", value="gtttttGAGACCa")
 
-# Function to extract gene sequences and upstream regions from GenBank
-def get_gene_sequences(gb_content, gene_names):
+# Function to extract ORF start sites and upstream sequences from GenBank
+def get_orf_upstream_sequences(gb_content, gene_names, upstream_window):
     gene_sequences = {}
     upstream_sequences = {}
     gb_file = StringIO(gb_content)
     for record in SeqIO.parse(gb_file, "genbank"):
         for feature in record.features:
-            if feature.type == "gene" and "gene" in feature.qualifiers:
+            if feature.type == "CDS" and "gene" in feature.qualifiers:
                 gene_name = feature.qualifiers["gene"][0]
                 if gene_name in gene_names:
+                    orf_start = feature.location.start
                     gene_seq = feature.location.extract(record).seq
                     gene_sequences[gene_name] = gene_seq
                     
-                    # Extract upstream region
-                    start = feature.location.start
-                    upstream_start = max(0, start - upstream_window[1])
-                    upstream_end = max(0, start - upstream_window[0])
+                    # Extract upstream region based on ORF start
+                    upstream_start = max(0, orf_start - upstream_window[1])
+                    upstream_end = max(0, orf_start - upstream_window[0])
                     upstream_seq = record.seq[upstream_start:upstream_end]
                     upstream_sequences[gene_name] = upstream_seq
     return gene_sequences, upstream_sequences
 
 # Function to generate spacers with PAM
-def generate_spacers_with_pam(gene_sequences, upstream_sequences, pam_seq, spacer_length, direction, num_spacers, position_range, design_upstream):
+def generate_spacers_with_pam(gene_sequences, upstream_sequences, pam_seq, spacer_length, direction, num_spacers, design_upstream):
     spacers = {}
     for gene in gene_sequences.keys():
         gene_spacers = []
         sequence = upstream_sequences[gene] if design_upstream else gene_sequences[gene]
         gene_length = len(sequence)
-        start_pos = int((position_range[0] / 100) * gene_length)
-        end_pos = int((position_range[1] / 100) * gene_length)
         
-        for i in range(start_pos, min(end_pos, gene_length - spacer_length - len(pam_seq))):
+        for i in range(gene_length - spacer_length - len(pam_seq)):
             if sequence[i:i + len(pam_seq)] == pam_seq:
                 if direction == "PAM-Upstream (PAM-Spacer)":
                     spacer = sequence[i + len(pam_seq):i + len(pam_seq) + spacer_length]
@@ -91,15 +88,15 @@ if st.button("Generate Spacers"):
             gb_content = genbank_file.getvalue().decode("utf-8")
             target_genes_list = [gene.strip() for gene in target_genes.split(",")]
 
-            # Extract gene and upstream sequences
-            gene_sequences, upstream_sequences = get_gene_sequences(gb_content, target_genes_list)
+            # Extract ORF and upstream sequences
+            gene_sequences, upstream_sequences = get_orf_upstream_sequences(gb_content, target_genes_list, upstream_window)
 
             # Check if any gene sequences were found
             if not gene_sequences:
                 st.error("No target genes found in the GenBank file. Please check the gene names.")
             else:
                 # Generate spacers
-                spacers = generate_spacers_with_pam(gene_sequences, upstream_sequences, pam_sequence, spacer_length, direction, num_spacers, position_range, design_upstream)
+                spacers = generate_spacers_with_pam(gene_sequences, upstream_sequences, pam_sequence, spacer_length, direction, num_spacers, design_upstream)
 
                 # Prepare data for display and download
                 spacer_data = []
