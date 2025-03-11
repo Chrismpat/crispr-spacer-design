@@ -75,7 +75,7 @@ def get_orf_upstream_sequences(gb_content, gene_names, upstream_window):
     return gene_sequences, upstream_sequences
 
 # Run analysis when the button is clicked
-if st.button("Generate Spacers ?", help="Click to generate spacers based on the selected parameters."):
+if st.button("Generate Spacers", help="Click to generate spacers based on the selected parameters."):
     if genbank_file is None:
         st.error("Please upload a GenBank file.")
     else:
