@@ -34,10 +34,15 @@ target_genes = st.text_input("Target Genes (comma-separated) ?", value="edd", he
 pam_sequence = st.text_input("PAM Sequence ?", value="CC", help="Specify the PAM sequence for your chosen CRISPR system (e.g., NGG for SpCas9).")
 spacer_length = st.slider("Spacer Length ?", min_value=16, max_value=50, value=32, help="Select the length of the spacer sequence.")
 direction = st.selectbox("Spacer Direction ?", ["PAM-Upstream (PAM-Spacer)", "PAM-Downstream (Spacer-PAM)"], help="Choose whether the PAM appears upstream or downstream of the spacer.")
-design_upstream = st.checkbox("Design Spacers Upstream of ORF ?", help="Check this box if you want to design spacers upstream of the ORF instead of within the gene.")
-upstream_window = st.slider("Upstream Window for PAM (bases from ORF start) ?", min_value=10, max_value=500, value=(10, 100), help="Select the range (in bases) upstream of the ORF where the PAM should be located.")
 num_spacers = st.slider("Number of Spacers to Predict per Gene ?", min_value=1, max_value=10, value=3, help="Choose how many spacers to predict per gene.")
 position_range = st.slider("Search Position in Gene (% of Gene Length) ?", min_value=0, max_value=100, value=(10, 20), help="Select the percentage range within the gene to search for spacers.")
+
+design_upstream = st.checkbox("Design Spacers Upstream of ORF ?", help="Check this box if you want to design spacers upstream of the ORF instead of within the gene.")
+if design_upstream:
+    upstream_window = st.slider("Upstream Window for PAM (bases from ORF start) ?", min_value=10, max_value=500, value=(10, 100), help="Select the range (in bases) upstream of the ORF where the PAM should be located.")
+else:
+    upstream_window = None
+
 left_flank = st.text_input("Left Flank Sequence ?", value="aggtcTcaaaac", help="Specify the left flank sequence to be added before the spacer.")
 right_flank = st.text_input("Right Flank Sequence ?", value="gtttttGAGACCa", help="Specify the right flank sequence to be added after the spacer.")
 
@@ -57,16 +62,16 @@ def get_orf_upstream_sequences(gb_content, gene_names, upstream_window):
                     gene_sequences[gene_name] = gene_seq
                     
                     # Extract upstream region considering strand orientation
-                    if strand == 1:  # Forward strand
-                        upstream_start = max(0, orf_start - upstream_window[1])
-                        upstream_end = max(0, orf_start - upstream_window[0])
-                        upstream_seq = record.seq[upstream_start:upstream_end]
-                    else:  # Reverse strand
-                        upstream_start = min(len(record.seq), feature.location.end + upstream_window[0])
-                        upstream_end = min(len(record.seq), feature.location.end + upstream_window[1])
-                        upstream_seq = record.seq[upstream_start:upstream_end].reverse_complement()
-                    
-                    upstream_sequences[gene_name] = upstream_seq
+                    if design_upstream and upstream_window:
+                        if strand == 1:  # Forward strand
+                            upstream_start = max(0, orf_start - upstream_window[1])
+                            upstream_end = max(0, orf_start - upstream_window[0])
+                            upstream_seq = record.seq[upstream_start:upstream_end]
+                        else:  # Reverse strand
+                            upstream_start = min(len(record.seq), feature.location.end + upstream_window[0])
+                            upstream_end = min(len(record.seq), feature.location.end + upstream_window[1])
+                            upstream_seq = record.seq[upstream_start:upstream_end].reverse_complement()
+                        upstream_sequences[gene_name] = upstream_seq
     return gene_sequences, upstream_sequences
 
 # Run analysis when the button is clicked
