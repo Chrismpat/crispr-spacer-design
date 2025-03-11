@@ -4,6 +4,11 @@ from Bio.Seq import Seq
 import pandas as pd
 from io import StringIO, BytesIO
 
+try:
+    import streamlit as st
+except ModuleNotFoundError:
+    raise ModuleNotFoundError("The 'streamlit' module is not installed. Please install it using 'pip install streamlit'.")
+
 # Streamlit App Title
 st.title("CRISPR Spacer Design Tool")
 
