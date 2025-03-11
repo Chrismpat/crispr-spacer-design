@@ -27,19 +27,19 @@ st.markdown(
 )
 
 # Upload the GenBank file with tooltip
-genbank_file = st.file_uploader("Upload a GenBank file (.gb or .gbff) ❗", type=["gb", "gbff"], help="Upload the GenBank file containing your target gene's sequence.")
+genbank_file = st.file_uploader("Upload a GenBank file (.gb or .gbff) ?", type=["gb", "gbff"], help="Upload the GenBank file containing your target gene's sequence.")
 
 # User inputs for parameters
-target_genes = st.text_input("Target Genes (comma-separated) ❗", value="edd", help="Enter the gene names for which you want to design spacers. Use commas to separate multiple genes.")
-pam_sequence = st.text_input("PAM Sequence ❗", value="CC", help="Specify the PAM sequence for your chosen CRISPR system (e.g., NGG for SpCas9).")
-spacer_length = st.slider("Spacer Length ❗", min_value=16, max_value=50, value=32, help="Select the length of the spacer sequence.")
-direction = st.selectbox("Spacer Direction ❗", ["PAM-Upstream (PAM-Spacer)", "PAM-Downstream (Spacer-PAM)"], help="Choose whether the PAM appears upstream or downstream of the spacer.")
-design_upstream = st.checkbox("Design Spacers Upstream of ORF ❗", help="Check this box if you want to design spacers upstream of the ORF instead of within the gene.")
-upstream_window = st.slider("Upstream Window for PAM (bases from ORF start) ❗", min_value=10, max_value=500, value=(10, 100), help="Select the range (in bases) upstream of the ORF where the PAM should be located.")
-num_spacers = st.slider("Number of Spacers to Predict per Gene ❗", min_value=1, max_value=10, value=3, help="Choose how many spacers to predict per gene.")
-position_range = st.slider("Search Position in Gene (% of Gene Length) ❗", min_value=0, max_value=100, value=(10, 20), help="Select the percentage range within the gene to search for spacers.")
-left_flank = st.text_input("Left Flank Sequence ❗", value="aggtcTcaaaac", help="Specify the left flank sequence to be added before the spacer.")
-right_flank = st.text_input("Right Flank Sequence ❗", value="gtttttGAGACCa", help="Specify the right flank sequence to be added after the spacer.")
+target_genes = st.text_input("Target Genes (comma-separated) ?", value="edd", help="Enter the gene names for which you want to design spacers. Use commas to separate multiple genes.")
+pam_sequence = st.text_input("PAM Sequence ?", value="CC", help="Specify the PAM sequence for your chosen CRISPR system (e.g., NGG for SpCas9).")
+spacer_length = st.slider("Spacer Length ?", min_value=16, max_value=50, value=32, help="Select the length of the spacer sequence.")
+direction = st.selectbox("Spacer Direction ?", ["PAM-Upstream (PAM-Spacer)", "PAM-Downstream (Spacer-PAM)"], help="Choose whether the PAM appears upstream or downstream of the spacer.")
+design_upstream = st.checkbox("Design Spacers Upstream of ORF ?", help="Check this box if you want to design spacers upstream of the ORF instead of within the gene.")
+upstream_window = st.slider("Upstream Window for PAM (bases from ORF start) ?", min_value=10, max_value=500, value=(10, 100), help="Select the range (in bases) upstream of the ORF where the PAM should be located.")
+num_spacers = st.slider("Number of Spacers to Predict per Gene ?", min_value=1, max_value=10, value=3, help="Choose how many spacers to predict per gene.")
+position_range = st.slider("Search Position in Gene (% of Gene Length) ?", min_value=0, max_value=100, value=(10, 20), help="Select the percentage range within the gene to search for spacers.")
+left_flank = st.text_input("Left Flank Sequence ?", value="aggtcTcaaaac", help="Specify the left flank sequence to be added before the spacer.")
+right_flank = st.text_input("Right Flank Sequence ?", value="gtttttGAGACCa", help="Specify the right flank sequence to be added after the spacer.")
 
 # Function to extract ORF start sites and upstream sequences from GenBank
 def get_orf_upstream_sequences(gb_content, gene_names, upstream_window):
@@ -70,7 +70,7 @@ def get_orf_upstream_sequences(gb_content, gene_names, upstream_window):
     return gene_sequences, upstream_sequences
 
 # Run analysis when the button is clicked
-if st.button("Generate Spacers ❗", help="Click to generate spacers based on the selected parameters."):
+if st.button("Generate Spacers ?", help="Click to generate spacers based on the selected parameters."):
     if genbank_file is None:
         st.error("Please upload a GenBank file.")
     else:
@@ -107,7 +107,7 @@ if st.button("Generate Spacers ❗", help="Click to generate spacers based on th
                 df.to_csv(output, index=False)
                 output.seek(0)
                 st.download_button(
-                    label="Download Results as CSV ❗", data=output, file_name="spacers_output.csv", mime="text/csv", help="Download the generated spacer sequences as a CSV file.")
+                    label="Download Results as CSV ?", data=output, file_name="spacers_output.csv", mime="text/csv", help="Download the generated spacer sequences as a CSV file.")
 
         except Exception as e:
             st.error(f"An error occurred: {e}")
