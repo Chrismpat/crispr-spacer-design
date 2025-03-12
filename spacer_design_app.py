@@ -74,8 +74,31 @@ def get_orf_upstream_sequences(gb_content, gene_names, upstream_window):
                         upstream_sequences[gene_name] = upstream_seq
     return gene_sequences, upstream_sequences
 
+# Function to generate spacers with PAM
+def generate_spacers_with_pam(gene_sequences, upstream_sequences, pam_seq, spacer_length, direction, num_spacers, position_range, design_upstream):
+    spacers = {}
+    for gene, sequence in (upstream_sequences if design_upstream else gene_sequences).items():
+        gene_spacers = []
+        gene_length = len(sequence)
+        start_pos = int((position_range[0] / 100) * gene_length)
+        end_pos = int((position_range[1] / 100) * gene_length)
+        
+        for i in range(start_pos, min(end_pos, gene_length - spacer_length - len(pam_seq))):
+            if sequence[i:i + len(pam_seq)] == pam_seq:
+                if direction == "PAM-Upstream (PAM-Spacer)":
+                    spacer = sequence[i + len(pam_seq):i + len(pam_seq) + spacer_length]
+                else:
+                    spacer = sequence[i - spacer_length:i] if i >= spacer_length else ""
+                
+                if spacer:
+                    gene_spacers.append(str(spacer))
+            if len(gene_spacers) == num_spacers:
+                break
+        spacers[gene] = gene_spacers
+    return spacers
+
 # Run analysis when the button is clicked
-if st.button("Generate Spacers", help="Click to generate spacers based on the selected parameters."):
+if st.button("Generate Spacers ?", help="Click to generate spacers based on the selected parameters."):
     if genbank_file is None:
         st.error("Please upload a GenBank file.")
     else:
@@ -87,32 +110,17 @@ if st.button("Generate Spacers", help="Click to generate spacers based on the se
             # Extract ORF and upstream sequences
             gene_sequences, upstream_sequences = get_orf_upstream_sequences(gb_content, target_genes_list, upstream_window)
 
-            # Check if any gene sequences were found
-            if not gene_sequences:
-                st.error("No target genes found in the GenBank file. Please check the gene names.")
-            else:
-                # Generate spacers
-                spacers = generate_spacers_with_pam(gene_sequences, upstream_sequences, pam_sequence, spacer_length, direction, num_spacers, position_range, design_upstream)
+            # Generate spacers
+            spacers = generate_spacers_with_pam(gene_sequences, upstream_sequences, pam_sequence, spacer_length, direction, num_spacers, position_range, design_upstream)
 
-                # Prepare data for display and download
-                spacer_data = []
-                for gene, spacer_list in spacers.items():
-                    for i, spacer in enumerate(spacer_list):
-                        full_spacer = f"{left_flank}{spacer}{right_flank}"
-                        spacer_name = f"{gene}_sp.{i + 1}"
-                        spacer_data.append([spacer_name, full_spacer])
-
-                # Display results
-                df = pd.DataFrame(spacer_data, columns=["Name", "Sequence"])
-                st.write("Generated Spacers:")
-                st.dataframe(df)
-
-                # Provide CSV download option
-                output = BytesIO()
-                df.to_csv(output, index=False)
-                output.seek(0)
-                st.download_button(
-                    label="Download Results as CSV ?", data=output, file_name="spacers_output.csv", mime="text/csv", help="Download the generated spacer sequences as a CSV file.")
-
+            # Prepare data for display and download
+            spacer_data = [[f"{gene}_sp.{i + 1}", f"{left_flank}{spacer}{right_flank}"] for gene, spacer_list in spacers.items() for i, spacer in enumerate(spacer_list)]
+            df = pd.DataFrame(spacer_data, columns=["Name", "Sequence"])
+            st.write("Generated Spacers:")
+            st.dataframe(df)
+            output = BytesIO()
+            df.to_csv(output, index=False)
+            output.seek(0)
+            st.download_button("Download Results as CSV ?", output, "spacers_output.csv", "text/csv", help="Download the generated spacer sequences as a CSV file.")
         except Exception as e:
             st.error(f"An error occurred: {e}")
