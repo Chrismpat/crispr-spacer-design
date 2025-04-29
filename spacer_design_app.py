@@ -152,13 +152,24 @@ if st.button("Generate Spacers ?", help="Generate spacers with current settings.
                 rows.append([f"{gene}_sp.{idx}_comp", comp])
         df = pd.DataFrame(rows, columns=["Name", "Sequence"])
         st.dataframe(df)
-        # Export to Excel
+                # Export to Excel, fallback to CSV if openpyxl missing
         buf = BytesIO()
-        with pd.ExcelWriter(buf, engine='openpyxl') as writer:
-            df.to_excel(writer, index=False)
-        buf.seek(0)
-        st.download_button(
-            "Download Results as Excel ?", buf, "spacers.xlsx",
-            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            help="Download spacers and complements as Excel"
-        )
+        try:
+            with pd.ExcelWriter(buf, engine='openpyxl') as writer:
+                df.to_excel(writer, index=False)
+            buf.seek(0)
+            st.download_button(
+                "Download Results as Excel ?", buf, "spacers.xlsx",
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                help="Download spacers and complements as Excel"
+            )
+        except ModuleNotFoundError:
+            # Fallback: CSV download
+            st.warning("Python package 'openpyxl' is not installed; falling back to CSV download.")
+            csv_buf = BytesIO()
+            df.to_csv(csv_buf, index=False)
+            csv_buf.seek(0)
+            st.download_button(
+                "Download Results as CSV", csv_buf, "spacers.csv", "text/csv",
+                help="Download spacers and complements as CSV"
+            )
