@@ -4,12 +4,6 @@ from Bio.Seq import Seq
 import pandas as pd
 from io import StringIO, BytesIO
 
-# Attempt to import Streamlit for error clarity
-try:
-    import streamlit as st
-except ModuleNotFoundError:
-    raise ModuleNotFoundError("The 'streamlit' module is not installed. Please install it using 'pip install streamlit'.")
-
 # Streamlit App Title
 st.title("CRISPR Spacer Design Tool")
 
@@ -27,187 +21,149 @@ st.markdown(
     """
 )
 
-# File upload
+# File uploads
 genbank_file = st.file_uploader(
-    "Upload a GenBank file (.gb or .gbff) ?", type=["gb", "gbff"],
+    "Upload a GenBank file (.gb or .gbff)", type=["gb", "gbff"],
     help="Upload the GenBank file containing your target gene's sequence."
 )
-
-# User inputs
-# Optionally upload an Excel file with gene names in first column
 gene_file = st.file_uploader(
-    "Upload Gene List (Excel) ?", type=["xlsx","xls"],
-    help="Upload an Excel file (.xlsx/.xls) with gene names in the first column to use instead of manual entry."
-)
-# Manual entry fallback
-target_genes = st.text_input(
-    "Target Genes (comma-separated) ?", value="edd",
-    help="Enter gene names (comma-separated) for spacer design. This will be ignored if an Excel file is uploaded."
-)
-pam_sequence = st.text_input(
-    "PAM Sequence ?", value="CC",
-    help="Specify PAM sequence (e.g., NGG for SpCas9)."
+    "Upload Gene List (Excel)", type=["xlsx", "xls"],
+    help="Upload an Excel file with gene names in the first column. Overrides manual entry."
 )
 
+# Manual inputs
 target_genes = st.text_input(
-    "Target Genes (comma-separated) ?", value="edd",
-    help="Enter gene names (comma-separated) for spacer design."
+    "Target Genes (comma-separated)", value="edd",
+    help="Enter gene names separated by commas. Ignored if Excel uploaded."
 )
 pam_sequence = st.text_input(
-    "PAM Sequence ?", value="CC",
+    "PAM Sequence", value="CC",
     help="Specify PAM sequence (e.g., NGG for SpCas9)."
 )
 spacer_length = st.slider(
-    "Spacer Length ?", 16, 50, 32,
-    help="Slider to select spacer length."
+    "Spacer Length", 16, 50, 32,
+    help="Length of the spacer sequence."
 )
 direction = st.selectbox(
-    "Spacer Direction ?",
+    "Spacer Direction",
     ["PAM-Upstream (PAM-Spacer)", "PAM-Downstream (Spacer-PAM)"],
-    help="Choose whether PAM is upstream or downstream of spacer."
+    help="Orientation of spacer relative to PAM."
 )
 num_spacers = st.slider(
-    "Number of Spacers to Predict per Gene ?", 1, 10, 3,
+    "Number of Spacers per Gene", 1, 10, 3,
     help="How many spacers to predict per gene."
 )
 position_range = st.slider(
-    "Search Position in Gene (% of Gene Length) ?", 0, 100, (10, 20),
-    help="Percentage of gene length to search for spacers."
+    "Search Position in Gene (% of Gene)", 0, 100, (10, 20),
+    help="Percentage range within gene to search for spacers."
 )
 
-# Upstream design controls
+# Upstream design
 design_upstream = st.checkbox(
-    "Design Spacers Upstream of ORF ?",
-    help="Enable to design spacers upstream of ORF start."
+    "Design Spacers Upstream of ORF",
+    help="Design spacers in a window upstream of ORF start."
 )
 if design_upstream:
     upstream_window = st.slider(
-        "Upstream Window for PAM (bases from ORF start) ?", 10, 500, (10, 100),
-        help="Range upstream of ORF to search for PAM."
+        "Upstream Window (bases from ORF start)", 10, 500, (10, 100),
+        help="Window upstream of ORF for PAM search."
     )
 else:
     upstream_window = None
 
 # Flank sequences
 left_flank = st.text_input(
-    "Left Flank Sequence ?", value="aggtcTcaaaac",
+    "Left Flank Sequence", value="aggtcTcaaaac",
     help="Sequence to prepend to each spacer."
 )
 right_flank = st.text_input(
-    "Right Flank Sequence ?", value="gtttttGAGACCa",
+    "Right Flank Sequence", value="gtttttGAGACCa",
     help="Sequence to append to each spacer."
 )
 
-# Function to extract ORF and upstream sequences
-def get_orf_upstream_sequences(gb_content, gene_names, upstream_window, design_upstream):
-    gene_seqs = {}
-    upstream_seqs = {}
+# Extract ORF/upstream sequences
+def get_orf_upstream_sequences(gb_content, gene_list, upstream_window, design_up):
+    gene_seqs, upstream_seqs = {}, {}
     handle = StringIO(gb_content)
-    for record in SeqIO.parse(handle, "genbank"):
-        for feat in record.features:
+    for rec in SeqIO.parse(handle, "genbank"):
+        for feat in rec.features:
             if feat.type == "CDS" and "gene" in feat.qualifiers:
                 name = feat.qualifiers["gene"][0]
-                if name in gene_names:
-                    # Extract ORF sequence
-                    orf_seq = feat.location.extract(record).seq
-                    gene_seqs[name] = orf_seq
-                    # Extract upstream if requested
-                    if design_upstream and upstream_window:
+                if name in gene_list:
+                    seq = feat.location.extract(rec).seq
+                    gene_seqs[name] = seq
+                    if design_up and upstream_window:
                         start = feat.location.start if feat.location.strand == 1 else feat.location.end
                         if feat.location.strand == 1:
-                            u_start = max(0, start - upstream_window[1])
-                            u_end = max(0, start - upstream_window[0])
-                            up_seq = record.seq[u_start:u_end]
+                            u0 = max(0, start - upstream_window[1])
+                            u1 = max(0, start - upstream_window[0])
+                            upstream_seqs[name] = rec.seq[u0:u1]
                         else:
-                            u_start = min(len(record.seq), start + upstream_window[0])
-                            u_end = min(len(record.seq), start + upstream_window[1])
-                            up_seq = record.seq[u_start:u_end].reverse_complement()
-                        upstream_seqs[name] = up_seq
+                            u0 = min(len(rec.seq), start + upstream_window[0])
+                            u1 = min(len(rec.seq), start + upstream_window[1])
+                            upstream_seqs[name] = rec.seq[u0:u1].reverse_complement()
     return gene_seqs, upstream_seqs
 
-# Function to generate spacers with PAM
+# Generate spacers
 def generate_spacers_with_pam(gene_seqs, upstream_seqs, pam, length, direction, count, prange, design_up):
-    out = {}
+    results = {}
     source = upstream_seqs if design_up else gene_seqs
     for name, seq in source.items():
-        seq = seq.upper()
-        L = len(seq)
-        start = int(prange[0]/100 * L)
-        end = int(prange[1]/100 * L)
+        s = seq.upper()
+        L = len(s)
+        start, end = int(prange[0]/100*L), int(prange[1]/100*L)
         found = []
-        for i in range(start, min(end, L - length - len(pam)) + 1):
-            if seq[i:i+len(pam)] == pam:
-                if direction.startswith("PAM-Up"):  # PAM-Spacer
-                    spac = seq[i+len(pam):i+len(pam)+length]
-                else:  # Spacer-PAM
-                    spac = seq[i-length:i] if i >= length else ""
+        for i in range(start, min(end, L-length-len(pam))+1):
+            if s[i:i+len(pam)] == pam:
+                spac = (s[i+len(pam):i+len(pam)+length] if direction.startswith("PAM-Up") else s[i-length:i] if i>=length else "")
                 if spac:
                     found.append(spac)
                     if len(found) == count:
                         break
-        out[name] = found
-    return out
+        results[name] = found
+    return results
 
 # Main action
-if st.button("Generate Spacers ?", help="Generate spacers with current settings."):
+if st.button("Generate Spacers", help="Generate spacers with current settings."):
     if not genbank_file:
         st.error("Please upload a GenBank file first.")
     else:
-        gb_content = genbank_file.getvalue().decode()
-        # Determine gene list: Excel upload overrides manual entry
-if gene_file:
-    try:
-        df_genes = pd.read_excel(gene_file)
-        genes = df_genes.iloc[:,0].dropna().astype(str).tolist()
-    except Exception as ex:
-        st.error(f"Failed to read gene list from Excel: {ex}")
-        genes = []
-else:
-    genes = [g.strip() for g in target_genes.split(',') if g.strip()]
-
-        gseq, useq = get_orf_upstream_sequences(gb_content, genes, upstream_window, design_upstream)
+        # Read genes from Excel or manual
+        if gene_file:
+            try:
+                dfg = pd.read_excel(gene_file)
+                genes = dfg.iloc[:,0].dropna().astype(str).tolist()
+            except Exception as e:
+                st.error(f"Reading gene list failed: {e}")
+                genes = []
+        else:
+            genes = [g.strip() for g in target_genes.split(',') if g.strip()]
+        
+        gb_text = genbank_file.getvalue().decode()
+        gseq, useq = get_orf_upstream_sequences(gb_text, genes, upstream_window, design_upstream)
         spc = generate_spacers_with_pam(gseq, useq, pam_sequence, spacer_length, direction, num_spacers, position_range, design_upstream)
-        # Build export data with complement rows
+        
+        # Build rows including complements
         rows = []
         for gene, lst in spc.items():
-            for idx, s in enumerate(lst, start=1):
-                full = f"{left_flank}{s}{right_flank}"
+            for idx, seq in enumerate(lst, 1):
+                full = f"{left_flank}{seq}{right_flank}"
                 comp = str(Seq(full).reverse_complement())
                 rows.append([f"{gene}_sp.{idx}", full])
                 rows.append([f"{gene}_sp.{idx}_comp", comp])
-        df = pd.DataFrame(rows, columns=["Name", "Sequence"])
+        df = pd.DataFrame(rows, columns=["Name","Sequence"])
         st.dataframe(df)
-                        # Export to Excel, try openpyxl then xlsxwriter, fallback to CSV
+        
+        # Export
         buf = BytesIO()
         try:
-            # Try openpyxl
             with pd.ExcelWriter(buf, engine='openpyxl') as writer:
                 df.to_excel(writer, index=False)
             buf.seek(0)
-            st.download_button(
-                "Download Results as Excel ?", buf, "spacers.xlsx",
-                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                help="Download spacers and complements as Excel"
-            )
-        except (ModuleNotFoundError, ImportError):
-            try:
-                # Try xlsxwriter engine
-                buf = BytesIO()
-                with pd.ExcelWriter(buf, engine='xlsxwriter') as writer:
-                    df.to_excel(writer, index=False)
-                buf.seek(0)
-                st.download_button(
-                    "Download Results as Excel ?", buf, "spacers.xlsx",
-                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    help="Download spacers and complements as Excel"
-                )
-            except (ModuleNotFoundError, ImportError):
-                # Fallback: CSV download
-                st.warning("No Excel engine available; falling back to CSV download.")
-                csv_buf = BytesIO()
-                df.to_csv(csv_buf, index=False)
-                csv_buf.seek(0)
-                st.download_button(
-                    "Download Results as CSV", csv_buf, "spacers.csv", "text/csv",
-                    help="Download spacers and complements as CSV"
-                )
+            st.download_button("Download Results as Excel", buf, "spacers.xlsx", 
+                                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        except Exception:
+            csv_buf = BytesIO()
+            df.to_csv(csv_buf, index=False)
+            csv_buf.seek(0)
+            st.download_button("Download Results as CSV", csv_buf, "spacers.csv", "text/csv")
