@@ -34,6 +34,21 @@ genbank_file = st.file_uploader(
 )
 
 # User inputs
+# Optionally upload an Excel file with gene names in first column
+gene_file = st.file_uploader(
+    "Upload Gene List (Excel) ?", type=["xlsx","xls"],
+    help="Upload an Excel file (.xlsx/.xls) with gene names in the first column to use instead of manual entry."
+)
+# Manual entry fallback
+target_genes = st.text_input(
+    "Target Genes (comma-separated) ?", value="edd",
+    help="Enter gene names (comma-separated) for spacer design. This will be ignored if an Excel file is uploaded."
+)
+pam_sequence = st.text_input(
+    "PAM Sequence ?", value="CC",
+    help="Specify PAM sequence (e.g., NGG for SpCas9)."
+)
+
 target_genes = st.text_input(
     "Target Genes (comma-separated) ?", value="edd",
     help="Enter gene names (comma-separated) for spacer design."
@@ -139,7 +154,17 @@ if st.button("Generate Spacers ?", help="Generate spacers with current settings.
         st.error("Please upload a GenBank file first.")
     else:
         gb_content = genbank_file.getvalue().decode()
-        genes = [g.strip() for g in target_genes.split(',')]
+        # Determine gene list: Excel upload overrides manual entry
+if gene_file:
+    try:
+        df_genes = pd.read_excel(gene_file)
+        genes = df_genes.iloc[:,0].dropna().astype(str).tolist()
+    except Exception as ex:
+        st.error(f"Failed to read gene list from Excel: {ex}")
+        genes = []
+else:
+    genes = [g.strip() for g in target_genes.split(',') if g.strip()]
+
         gseq, useq = get_orf_upstream_sequences(gb_content, genes, upstream_window, design_upstream)
         spc = generate_spacers_with_pam(gseq, useq, pam_sequence, spacer_length, direction, num_spacers, position_range, design_upstream)
         # Build export data with complement rows
