@@ -4,6 +4,7 @@ from Bio.Seq import Seq
 import pandas as pd
 from io import StringIO, BytesIO
 
+# Attempt to import Streamlit for error clarity
 try:
     import streamlit as st
 except ModuleNotFoundError:
@@ -21,106 +22,143 @@ st.markdown(
     4. Under "Downloads", look for **"GenBank (Full)"**.
     5. Download the **.gbff** file.
     6. Upload the file using the button below.
-    
+
     **Note:** The GBFF file contains both the genome sequence and gene annotations.
     """
 )
 
-# Upload the GenBank file with tooltip
-genbank_file = st.file_uploader("Upload a GenBank file (.gb or .gbff) ?", type=["gb", "gbff"], help="Upload the GenBank file containing your target gene's sequence.")
+# File upload
+genbank_file = st.file_uploader(
+    "Upload a GenBank file (.gb or .gbff) ?", type=["gb", "gbff"],
+    help="Upload the GenBank file containing your target gene's sequence."
+)
 
-# User inputs for parameters
-target_genes = st.text_input("Target Genes (comma-separated) ?", value="edd", help="Enter the gene names for which you want to design spacers. Use commas to separate multiple genes.")
-pam_sequence = st.text_input("PAM Sequence ?", value="CC", help="Specify the PAM sequence for your chosen CRISPR system (e.g., NGG for SpCas9).")
-spacer_length = st.slider("Spacer Length ?", min_value=16, max_value=50, value=32, help="Select the length of the spacer sequence.")
-direction = st.selectbox("Spacer Direction ?", ["PAM-Upstream (PAM-Spacer)", "PAM-Downstream (Spacer-PAM)"], help="Choose whether the PAM appears upstream or downstream of the spacer.")
-num_spacers = st.slider("Number of Spacers to Predict per Gene ?", min_value=1, max_value=10, value=3, help="Choose how many spacers to predict per gene.")
-position_range = st.slider("Search Position in Gene (% of Gene Length) ?", min_value=0, max_value=100, value=(10, 20), help="Select the percentage range within the gene to search for spacers.")
+# User inputs
+target_genes = st.text_input(
+    "Target Genes (comma-separated) ?", value="edd",
+    help="Enter gene names (comma-separated) for spacer design."
+)
+pam_sequence = st.text_input(
+    "PAM Sequence ?", value="CC",
+    help="Specify PAM sequence (e.g., NGG for SpCas9)."
+)
+spacer_length = st.slider(
+    "Spacer Length ?", 16, 50, 32,
+    help="Slider to select spacer length."
+)
+direction = st.selectbox(
+    "Spacer Direction ?",
+    ["PAM-Upstream (PAM-Spacer)", "PAM-Downstream (Spacer-PAM)"],
+    help="Choose whether PAM is upstream or downstream of spacer."
+)
+num_spacers = st.slider(
+    "Number of Spacers to Predict per Gene ?", 1, 10, 3,
+    help="How many spacers to predict per gene."
+)
+position_range = st.slider(
+    "Search Position in Gene (% of Gene Length) ?", 0, 100, (10, 20),
+    help="Percentage of gene length to search for spacers."
+)
 
-design_upstream = st.checkbox("Design Spacers Upstream of ORF ?", help="Check this box if you want to design spacers upstream of the ORF instead of within the gene.")
+# Upstream design controls
+design_upstream = st.checkbox(
+    "Design Spacers Upstream of ORF ?",
+    help="Enable to design spacers upstream of ORF start."
+)
 if design_upstream:
-    upstream_window = st.slider("Upstream Window for PAM (bases from ORF start) ?", min_value=10, max_value=500, value=(10, 100), help="Select the range (in bases) upstream of the ORF where the PAM should be located.")
+    upstream_window = st.slider(
+        "Upstream Window for PAM (bases from ORF start) ?", 10, 500, (10, 100),
+        help="Range upstream of ORF to search for PAM."
+    )
 else:
     upstream_window = None
 
-left_flank = st.text_input("Left Flank Sequence ?", value="aggtcTcaaaac", help="Specify the left flank sequence to be added before the spacer.")
-right_flank = st.text_input("Right Flank Sequence ?", value="gtttttGAGACCa", help="Specify the right flank sequence to be added after the spacer.")
+# Flank sequences
+left_flank = st.text_input(
+    "Left Flank Sequence ?", value="aggtcTcaaaac",
+    help="Sequence to prepend to each spacer."
+)
+right_flank = st.text_input(
+    "Right Flank Sequence ?", value="gtttttGAGACCa",
+    help="Sequence to append to each spacer."
+)
 
-# Function to extract ORF start sites and upstream sequences from GenBank
-def get_orf_upstream_sequences(gb_content, gene_names, upstream_window):
-    gene_sequences = {}
-    upstream_sequences = {}
-    gb_file = StringIO(gb_content)
-    for record in SeqIO.parse(gb_file, "genbank"):
-        for feature in record.features:
-            if feature.type == "CDS" and "gene" in feature.qualifiers:
-                gene_name = feature.qualifiers["gene"][0]
-                if gene_name in gene_names:
-                    orf_start = feature.location.start
-                    strand = feature.location.strand
-                    gene_seq = feature.location.extract(record).seq
-                    gene_sequences[gene_name] = gene_seq
-                    
-                    # Extract upstream region considering strand orientation
+# Function to extract ORF and upstream sequences
+def get_orf_upstream_sequences(gb_content, gene_names, upstream_window, design_upstream):
+    gene_seqs = {}
+    upstream_seqs = {}
+    handle = StringIO(gb_content)
+    for record in SeqIO.parse(handle, "genbank"):
+        for feat in record.features:
+            if feat.type == "CDS" and "gene" in feat.qualifiers:
+                name = feat.qualifiers["gene"][0]
+                if name in gene_names:
+                    # Extract ORF sequence
+                    orf_seq = feat.location.extract(record).seq
+                    gene_seqs[name] = orf_seq
+                    # Extract upstream if requested
                     if design_upstream and upstream_window:
-                        if strand == 1:  # Forward strand
-                            upstream_start = max(0, orf_start - upstream_window[1])
-                            upstream_end = max(0, orf_start - upstream_window[0])
-                            upstream_seq = record.seq[upstream_start:upstream_end]
-                        else:  # Reverse strand
-                            upstream_start = min(len(record.seq), feature.location.end + upstream_window[0])
-                            upstream_end = min(len(record.seq), feature.location.end + upstream_window[1])
-                            upstream_seq = record.seq[upstream_start:upstream_end].reverse_complement()
-                        upstream_sequences[gene_name] = upstream_seq
-    return gene_sequences, upstream_sequences
+                        start = feat.location.start if feat.location.strand == 1 else feat.location.end
+                        if feat.location.strand == 1:
+                            u_start = max(0, start - upstream_window[1])
+                            u_end = max(0, start - upstream_window[0])
+                            up_seq = record.seq[u_start:u_end]
+                        else:
+                            u_start = min(len(record.seq), start + upstream_window[0])
+                            u_end = min(len(record.seq), start + upstream_window[1])
+                            up_seq = record.seq[u_start:u_end].reverse_complement()
+                        upstream_seqs[name] = up_seq
+    return gene_seqs, upstream_seqs
 
 # Function to generate spacers with PAM
-def generate_spacers_with_pam(gene_sequences, upstream_sequences, pam_seq, spacer_length, direction, num_spacers, position_range, design_upstream):
-    spacers = {}
-    for gene, sequence in (upstream_sequences if design_upstream else gene_sequences).items():
-        gene_spacers = []
-        gene_length = len(sequence)
-        start_pos = int((position_range[0] / 100) * gene_length)
-        end_pos = int((position_range[1] / 100) * gene_length)
-        
-        for i in range(start_pos, min(end_pos, gene_length - spacer_length - len(pam_seq))):
-            if sequence[i:i + len(pam_seq)] == pam_seq:
-                if direction == "PAM-Upstream (PAM-Spacer)":
-                    spacer = sequence[i + len(pam_seq):i + len(pam_seq) + spacer_length]
-                else:
-                    spacer = sequence[i - spacer_length:i] if i >= spacer_length else ""
-                
-                if spacer:
-                    gene_spacers.append(str(spacer))
-            if len(gene_spacers) == num_spacers:
-                break
-        spacers[gene] = gene_spacers
-    return spacers
+def generate_spacers_with_pam(gene_seqs, upstream_seqs, pam, length, direction, count, prange, design_up):
+    out = {}
+    source = upstream_seqs if design_up else gene_seqs
+    for name, seq in source.items():
+        seq = seq.upper()
+        L = len(seq)
+        start = int(prange[0]/100 * L)
+        end = int(prange[1]/100 * L)
+        found = []
+        for i in range(start, min(end, L - length - len(pam)) + 1):
+            if seq[i:i+len(pam)] == pam:
+                if direction.startswith("PAM-Up"):  # PAM-Spacer
+                    spac = seq[i+len(pam):i+len(pam)+length]
+                else:  # Spacer-PAM
+                    spac = seq[i-length:i] if i >= length else ""
+                if spac:
+                    found.append(spac)
+                    if len(found) == count:
+                        break
+        out[name] = found
+    return out
 
-# Run analysis when the button is clicked
-if st.button("Generate Spacers ?", help="Click to generate spacers based on the selected parameters."):
-    if genbank_file is None:
-        st.error("Please upload a GenBank file.")
+# Main action
+if st.button("Generate Spacers ?", help="Generate spacers with current settings."):
+    if not genbank_file:
+        st.error("Please upload a GenBank file first.")
     else:
-        try:
-            # Read and parse the GenBank file
-            gb_content = genbank_file.getvalue().decode("utf-8")
-            target_genes_list = [gene.strip() for gene in target_genes.split(",")]
-
-            # Extract ORF and upstream sequences
-            gene_sequences, upstream_sequences = get_orf_upstream_sequences(gb_content, target_genes_list, upstream_window)
-
-            # Generate spacers
-            spacers = generate_spacers_with_pam(gene_sequences, upstream_sequences, pam_sequence, spacer_length, direction, num_spacers, position_range, design_upstream)
-
-            # Prepare data for display and download
-            spacer_data = [[f"{gene}_sp.{i + 1}", f"{left_flank}{spacer}{right_flank}"] for gene, spacer_list in spacers.items() for i, spacer in enumerate(spacer_list)]
-            df = pd.DataFrame(spacer_data, columns=["Name", "Sequence"])
-            st.write("Generated Spacers:")
-            st.dataframe(df)
-            output = BytesIO()
-            df.to_csv(output, index=False)
-            output.seek(0)
-            st.download_button("Download Results as CSV ?", output, "spacers_output.csv", "text/csv", help="Download the generated spacer sequences as a CSV file.")
-        except Exception as e:
-            st.error(f"An error occurred: {e}")
+        gb_content = genbank_file.getvalue().decode()
+        genes = [g.strip() for g in target_genes.split(',')]
+        gseq, useq = get_orf_upstream_sequences(gb_content, genes, upstream_window, design_upstream)
+        spc = generate_spacers_with_pam(gseq, useq, pam_sequence, spacer_length, direction, num_spacers, position_range, design_upstream)
+        # Build export data with complement rows
+        rows = []
+        for gene, lst in spc.items():
+            for idx, s in enumerate(lst, start=1):
+                full = f"{left_flank}{s}{right_flank}"
+                comp = str(Seq(full).reverse_complement())
+                rows.append([f"{gene}_sp.{idx}", full])
+                rows.append([f"{gene}_sp.{idx}_comp", comp])
+        df = pd.DataFrame(rows, columns=["Name", "Sequence"])
+        st.dataframe(df)
+        # Export to Excel
+        buf = BytesIO()
+        with pd.ExcelWriter(buf, engine='openpyxl') as writer:
+            df.to_excel(writer, index=False)
+        buf.seek(0)
+        st.download_button(
+            "Download Results as Excel ?", buf, "spacers.xlsx",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            help="Download spacers and complements as Excel"
+        )
